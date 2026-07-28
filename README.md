@@ -12,7 +12,7 @@ YOLO26-Depth 单目深度估计模型在 RK3588 NPU 上的完整部署方案。
 
 ### 5 个型号对比
 
-<img src="assets/compare_all_5way.png?v=3" width="660">
+<img src="assets/compare_all_5way.png" width="660">
 
 每行一个型号（n → x），五列分别为 **PT 原版**、**ONNX CPU**、**Python/RKNN**、**Rust/RKNN**、**C++/RKNN**。所有推理路径的输出高度一致，PT→RKNN 全链路误差 < 0.52%，三种语言的 RKNN 输出相关系数 > 0.99999。
 
