@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Rust
+target/
+
+# Models (large binary files - generate with export.py / convert.py)
+*.pt
+*.onnx
+*.rknn
+
+# Output images / point clouds / depth maps
+*.png
+*.jpg
+*.ply
+*.npy
+
+# README demo images are kept
+!assets/*.png
+!assets/*.jpg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,13 @@
+[package]
+name = "yolo26depth-rknn"
+version = "0.2.0"
+edition = "2021"
+description = "YOLO26-Depth monocular depth estimation on RK3588 NPU via RKNN"
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+image = "0.24"
+clap = { version = "4", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"

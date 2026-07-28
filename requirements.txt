@@ -1,0 +1,21 @@
+# YOLO26-Depth RKNN - Python Dependencies
+#
+# Export (x86 dev machine):
+#   pip install -r requirements.txt
+#
+# Inference (RK3588 device):
+#   pip install opencv-python numpy onnxruntime
+#   rknn-toolkit-lite2 is usually pre-installed
+
+# Core
+numpy>=1.24.0
+opencv-python>=4.8.0
+
+# Export: PT -> ONNX
+ultralytics>=8.3.0
+onnx>=1.16.0
+onnxruntime>=1.18.0
+onnx-simplifier>=0.4.35
+
+# Convert: ONNX -> RKNN (x86 only)
+rknn-toolkit2>=2.3.0
