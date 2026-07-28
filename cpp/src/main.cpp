@@ -129,17 +129,25 @@ int main(int argc, char** argv) {
         // Preprocess ONCE (for benchmark, reuse the buffer)
         std::vector<uint8_t> input_data = depth::preprocess(args.image, iw, ih);
 
-        // Warmup
+        // Helper: resize depth from model output to original image size
+        int ow = model->output_w();
+        int oh = model->output_h();
+
+        // Warmup: pure NPU inference, no resize
         for (int i = 0; i < args.warmup; ++i) {
-            model->infer(input_data, src_w, src_h);
+            model->infer(input_data);
         }
 
         if (args.benchmark > 0) {
-            // Benchmark mode
+            // Benchmark: time NPU infer + resize back to original size
             std::vector<double> latencies;
             for (int i = 0; i < args.benchmark; ++i) {
                 auto t0 = std::chrono::high_resolution_clock::now();
-                model->infer(input_data, src_w, src_h);
+                const auto& depth_raw = model->infer(input_data);
+                // Resize depth to original image size
+                cv::Mat raw_map(oh, ow, CV_32F, const_cast<float*>(depth_raw.data()));
+                cv::Mat depth_resized;
+                cv::resize(raw_map, depth_resized, cv::Size(src_w, src_h), 0, 0, cv::INTER_LINEAR);
                 auto t1 = std::chrono::high_resolution_clock::now();
                 double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
                 latencies.push_back(ms);
@@ -157,7 +165,13 @@ int main(int argc, char** argv) {
         } else {
             // Single inference
             auto t0 = std::chrono::high_resolution_clock::now();
-            std::vector<float> depth_map = model->infer(input_data, src_w, src_h);
+            const auto& depth_raw = model->infer(input_data);
+            // Resize depth to original image size
+            cv::Mat raw_map(oh, ow, CV_32F, const_cast<float*>(depth_raw.data()));
+            cv::Mat depth_resized_map;
+            cv::resize(raw_map, depth_resized_map, cv::Size(src_w, src_h), 0, 0, cv::INTER_LINEAR);
+            // Copy to owned vector for post-processing
+            std::vector<float> depth_map(depth_resized_map.begin<float>(), depth_resized_map.end<float>());
             auto t1 = std::chrono::high_resolution_clock::now();
             double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 

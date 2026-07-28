@@ -27,24 +27,31 @@ fn run(args: &Args) -> Result<()> {
 
     // Benchmark or single inference
     if args.benchmark > 0 {
-        run_benchmark(&model, &rgb_data, args.benchmark)
+        run_benchmark(&model, &rgb_data, orig_w as usize, orig_h as usize, args.benchmark)
     } else {
         run_inference(&model, &rgb_data, &orig_img, args)
     }
 }
 
-fn run_benchmark(model: &DepthModel, rgb_data: &[u8], iterations: u32) -> Result<()> {
+fn run_benchmark(model: &DepthModel, rgb_data: &[u8], orig_w: usize, orig_h: usize, iterations: u32) -> Result<()> {
     // Warmup
     log::info!("Warmup (3)...");
     for _ in 0..3 {
         model.infer(rgb_data)?;
     }
 
-    // Benchmark
+    // Benchmark: time NPU infer + resize to original image size
     let mut times = Vec::with_capacity(iterations as usize);
     for _ in 0..iterations {
         let start = Instant::now();
-        model.infer(rgb_data)?;
+        let depth_raw = model.infer(rgb_data)?;
+        let _depth = resize_depth(
+            &depth_raw,
+            model.output_w,
+            model.output_h,
+            orig_w,
+            orig_h,
+        );
         times.push(start.elapsed().as_secs_f64() * 1000.0);
     }
 

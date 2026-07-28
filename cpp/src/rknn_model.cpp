@@ -4,7 +4,6 @@
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>
-#include <opencv2/opencv.hpp>
 
 namespace depth {
 
@@ -26,8 +25,12 @@ DepthModel::DepthModel(const std::string& model_path, rknn_core_mask core) {
 
     query_io();
 
+    // Pre-allocate output buffer to avoid per-frame allocation + memcpy
+    output_buffer_.resize(static_cast<size_t>(output_h_) * output_w_);
+
     std::cout << "RKNN model loaded (imgsz=(" << input_h_ << "," << input_w_
-              << "), core=" << static_cast<int>(core) << ")" << std::endl;
+              << "), output=" << output_h_ << "x" << output_w_
+              << ", core=" << static_cast<int>(core) << ")" << std::endl;
 }
 
 DepthModel::~DepthModel() {
@@ -67,8 +70,7 @@ void DepthModel::query_io() {
     output_w_ = static_cast<int>(out_attr.dims[3]);
 }
 
-std::vector<float> DepthModel::infer(const std::vector<uint8_t>& input,
-                                     int src_w, int src_h) {
+const std::vector<float>& DepthModel::infer(const std::vector<uint8_t>& input) {
     if (static_cast<int>(input.size()) != input_h_ * input_w_ * 3) {
         throw std::runtime_error("Input size mismatch: expected "
                                  + std::to_string(input_h_) + "x"
@@ -92,39 +94,22 @@ std::vector<float> DepthModel::infer(const std::vector<uint8_t>& input,
     // Run inference
     check_rknn(rknn_run(context_, nullptr), "run");
 
-    // Get output (float32 depth map)
+    // Reuse pre-allocated output buffer: NPU writes directly into it
+    size_t out_bytes = static_cast<size_t>(output_h_) * output_w_ * sizeof(float);
+
     rknn_output outputs[1];
     memset(outputs, 0, sizeof(outputs));
-    outputs[0].want_float = 1;     // convert to float if needed
-    outputs[0].is_prealloc = 0;    // runtime allocates buffer
+    outputs[0].want_float = 1;
+    outputs[0].is_prealloc = 1;
     outputs[0].index = 0;
+    outputs[0].buf = output_buffer_.data();
+    outputs[0].size = static_cast<uint32_t>(out_bytes);
 
     check_rknn(rknn_outputs_get(context_, 1, outputs, nullptr), "outputs_get");
-
-    uint32_t out_bytes = outputs[0].size;
-    size_t n_pixels = static_cast<size_t>(output_h_) * output_w_;
-
-    if (out_bytes < n_pixels * sizeof(float)) {
-        rknn_outputs_release(context_, 1, outputs);
-        throw std::runtime_error("Unexpected output size: expected " + std::to_string(n_pixels * sizeof(float))
-                                 + ", got " + std::to_string(out_bytes));
-    }
-
-    // Copy output to vector (NCHW -> flat H*W)
-    std::vector<float> depth_raw(n_pixels);
-    std::memcpy(depth_raw.data(), outputs[0].buf, n_pixels * sizeof(float));
-
+    // With is_prealloc=1, data is already in output_buffer_ — no memcpy needed
     rknn_outputs_release(context_, 1, outputs);
 
-    // Resize to original image size using bilinear interpolation
-    if (output_h_ != src_h || output_w_ != src_w) {
-        cv::Mat raw_map(output_h_, output_w_, CV_32F, depth_raw.data());
-        cv::Mat resized;
-        cv::resize(raw_map, resized, cv::Size(src_w, src_h), 0, 0, cv::INTER_LINEAR);
-        depth_raw.assign(resized.begin<float>(), resized.end<float>());
-    }
-
-    return depth_raw; // (src_h * src_w) float32 in row-major order
+    return output_buffer_;
 }
 
 } // namespace depth

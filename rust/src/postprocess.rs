@@ -7,7 +7,7 @@ use crate::cli::ColorMode;
 use crate::error::Result;
 
 // ============================================================================
-// Bilinear resize for f32 depth maps
+// Bilinear resize for f32 depth maps (f32 math matches OpenCV cv::INTER_LINEAR)
 // ============================================================================
 
 /// Resize a depth map from model output size to the original image size.
@@ -28,26 +28,26 @@ pub fn resize_depth(
     );
 
     let mut dst = vec![0.0f32; target_w * target_h];
-    let sx = (model_w as f64) / (target_w as f64);
-    let sy = (model_h as f64) / (target_h as f64);
+    let sx = model_w as f32 / target_w as f32;
+    let sy = model_h as f32 / target_h as f32;
 
     for y in 0..target_h {
-        let sy_f = (y as f64 + 0.5) * sy - 0.5;
+        let sy_f = (y as f32 + 0.5) * sy - 0.5;
         let y0 = sy_f.floor() as usize;
         let y1 = (y0 + 1).min(model_h - 1);
-        let fy = sy_f - y0 as f64;
+        let fy = sy_f - y0 as f32;
 
         for x in 0..target_w {
-            let sx_f = (x as f64 + 0.5) * sx - 0.5;
+            let sx_f = (x as f32 + 0.5) * sx - 0.5;
             let x0 = sx_f.floor() as usize;
             let x1 = (x0 + 1).min(model_w - 1);
-            let fx = sx_f - x0 as f64;
+            let fx = sx_f - x0 as f32;
 
-            let v = depth_raw[y0 * model_w + x0] as f64 * (1.0 - fx) * (1.0 - fy)
-                + depth_raw[y0 * model_w + x1] as f64 * fx * (1.0 - fy)
-                + depth_raw[y1 * model_w + x0] as f64 * (1.0 - fx) * fy
-                + depth_raw[y1 * model_w + x1] as f64 * fx * fy;
-            dst[y * target_w + x] = v as f32;
+            let v = depth_raw[y0 * model_w + x0] as f32 * (1.0 - fx) * (1.0 - fy)
+                + depth_raw[y0 * model_w + x1] as f32 * fx * (1.0 - fy)
+                + depth_raw[y1 * model_w + x0] as f32 * (1.0 - fx) * fy
+                + depth_raw[y1 * model_w + x1] as f32 * fx * fy;
+            dst[y * target_w + x] = v;
         }
     }
     dst

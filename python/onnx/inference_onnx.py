@@ -50,21 +50,24 @@ class YOLO26DepthONNX:
         out_shape = self.sess.get_outputs()[0].shape
         print(f"ONNX model: {model_path} (imgsz={self.imgsz}, output={out_shape})")
 
+    def preprocess(self, image: np.ndarray) -> np.ndarray:
+        """Preprocess image into ONNX input tensor (float32 NCHW)."""
+        return prepare_input_rect(image, self.imgsz, normalize=True)
+
+    def infer(self, input_tensor: np.ndarray) -> np.ndarray:
+        """Run CPU inference on a preprocessed input tensor.
+
+        Returns (H, W) float32 depth at model output resolution.
+        """
+        out = self.sess.run(None, {self.input_name: input_tensor})[0]
+        return np.squeeze(out)
+
     def predict(self, image: np.ndarray) -> np.ndarray:
         """Run inference, return (H, W) float32 depth at original image size.
-
-        Preprocessing matches ultralytics PT predict: the image is resized with
-        aspect-ratio-preserving rect scaling.  If the image aspect ratio differs
-        from the model's, a warning is emitted.
         """
         src_h, src_w = image.shape[:2]
-
-        # Rect-aware preprocessing (float32 NCHW, /255 for ONNX)
-        inp = prepare_input_rect(image, self.imgsz, normalize=True)
-        out = self.sess.run(None, {self.input_name: inp})[0]
-        depth = np.squeeze(out)
-
-        # Resize depth back to original image size
+        tensor = self.preprocess(image)
+        depth = self.infer(tensor)
         depth = cv2.resize(depth, (src_w, src_h), interpolation=cv2.INTER_LINEAR)
         return depth
 
@@ -102,16 +105,21 @@ def main():
         raise FileNotFoundError(f"Image not found: {args.image}")
     print(f"Input image: {image.shape[1]}x{image.shape[0]}")
 
+    # Preprocess once
+    tensor = model.preprocess(image)
+
     # Warmup
     for _ in range(args.warmup):
-        model.predict(image)
+        model.infer(tensor)
 
     if args.benchmark > 0:
-        # Benchmark mode
+        # Benchmark: time NPU infer + resize back to original size
+        src_h, src_w = image.shape[:2]
         times = []
         for _ in range(args.benchmark):
             t0 = time.perf_counter()
-            model.predict(image)
+            depth = model.infer(tensor)
+            depth = cv2.resize(depth, (src_w, src_h), interpolation=cv2.INTER_LINEAR)
             times.append((time.perf_counter() - t0) * 1000)
         avg = np.mean(times)
         print(f"\nBenchmark ({args.benchmark} iterations):")
@@ -119,8 +127,10 @@ def main():
         print(f"  Min: {min(times):.1f} ms  Max: {max(times):.1f} ms")
     else:
         # Single inference
+        src_h, src_w = image.shape[:2]
         t0 = time.perf_counter()
-        depth = model.predict(image)
+        depth = model.infer(tensor)
+        depth = cv2.resize(depth, (src_w, src_h), interpolation=cv2.INTER_LINEAR)
         elapsed = (time.perf_counter() - t0) * 1000
         print(f"\nInference: {elapsed:.1f} ms")
         print_depth_stats(depth)
